@@ -4,8 +4,8 @@ A local 3D workshop. Type a prompt or hand over an image; a 3D model gets made
 **on your own machine** — viewed, styled, and exported without a single byte
 leaving localhost.
 
-![Kilnform: "ceramic teapot" sculpted locally into 221k triangles in 5.7 seconds](docs/screenshot.png)
-<p align="center"><i>"ceramic teapot" → 221,668 triangles, 5.7 seconds, RTX 5060 Laptop — entirely offline.</i></p>
+![Kilnform: "garden gnome with red hat" sculpted locally in 5 seconds](docs/screenshot.png)
+<p align="center"><i>"garden gnome with red hat" → 113,850 triangles in 5 seconds on an RTX 5060 Laptop — entirely offline. The shelf below holds earlier makes: a teapot, a treasure chest, two fountains.</i></p>
 
 Two engines share one bench:
 
