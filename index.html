@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kilnform — local 3D workshop</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x25C6;</text></svg>" />
+  <link rel="stylesheet" href="/src/ui.css" />
+</head>
+<body>
+  <header id="topbar">
+    <div class="wordmark">
+      <span class="wordmark-mark">◆</span>
+      <span class="wordmark-text">KILN<em>FORM</em></span>
+      <span class="wordmark-sub">local 3d workshop</span>
+    </div>
+    <div class="topbar-status">
+      <span class="dot" id="net-dot" title="Everything is made and kept on this machine"></span>
+      <span id="net-label">offline · nothing leaves this machine</span>
+    </div>
+  </header>
+
+  <main id="layout">
+    <!-- LEFT: making -->
+    <aside id="panel-left">
+      <div class="engine-row">
+        <span class="field-label">Engine</span>
+        <div class="engine-toggle">
+          <button id="engine-ai" class="eng-btn" disabled title="Local AI: SD-Turbo + TripoSR on your GPU">AI · realistic</button>
+          <button id="engine-proc" class="eng-btn active" title="Procedural, instant">Instant</button>
+        </div>
+        <div id="ai-badge" class="hint">looking for the AI backend…</div>
+        <div id="ai-detail" hidden>
+          <span class="field-label">Detail</span>
+          <div class="seg-row">
+            <button class="seg-btn" data-res="128" title="~fastest, coarse mesh">Draft</button>
+            <button class="seg-btn active" data-res="256" title="balanced">Standard</button>
+            <button class="seg-btn" data-res="320" title="densest mesh, a bit slower">Fine</button>
+          </div>
+        </div>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="text" role="tab">From text</button>
+        <button class="tab" data-tab="image" role="tab">From image</button>
+      </nav>
+
+      <section class="tab-page" id="page-text">
+        <label class="field-label" for="prompt-input">What do you want to make?</label>
+        <textarea id="prompt-input" rows="3" placeholder="e.g. red house, çeşme, a ceramic vase with cracks…"></textarea>
+        <p class="hint">Turkish or English, both fine. Instant mode knows houses, trees, cars, robots, rockets and friends; AI mode will take on anything.</p>
+        <div class="chips" id="prompt-chips">
+          <button class="chip">ceramic teapot</button>
+          <button class="chip">ahşap sandık</button>
+          <button class="chip">rusty robot</button>
+          <button class="chip">kırmızı spor araba</button>
+          <button class="chip">garden gnome</button>
+        </div>
+        <button id="btn-generate" class="btn-primary">Make it</button>
+        <div id="variations" class="variations" hidden>
+          <span class="field-label">Variations</span>
+          <div class="variation-row">
+            <button class="var-card" data-seed="0">V1</button>
+            <button class="var-card" data-seed="1">V2</button>
+            <button class="var-card" data-seed="2">V3</button>
+            <button class="var-card" data-seed="3">V4</button>
+          </div>
+        </div>
+        <div id="parse-result" class="parse-result" hidden></div>
+        <div id="ai-preview-wrap" hidden>
+          <span class="field-label">AI reference image</span>
+          <img id="ai-preview" alt="Intermediate image the AI painted before sculpting" />
+        </div>
+      </section>
+
+      <section class="tab-page" id="page-image" hidden>
+        <label class="field-label" for="image-input">Image — it stays on this machine</label>
+        <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Pick an image">
+          <input type="file" id="image-input" accept="image/*" hidden />
+          <div id="dz-idle">
+            <span class="dz-mark">⇩</span>
+            <span>Click to pick an image</span>
+            <small>or drop it anywhere · or paste with Ctrl+V</small>
+          </div>
+          <img id="image-preview" alt="Selected image preview" hidden />
+        </div>
+        <div id="proc-image-opts">
+          <label class="field-label" for="img-mode">Method</label>
+          <select id="img-mode">
+            <option value="relief">Relief (heightfield)</option>
+            <option value="extrude">Extrude (silhouette)</option>
+            <option value="voxel">Voxel (colored cubes)</option>
+          </select>
+          <label class="field-label" for="img-depth">Depth: <span id="img-depth-val" class="mono">1.0</span></label>
+          <input type="range" id="img-depth" min="0.2" max="3" step="0.1" value="1" />
+          <label class="field-label" for="img-res">Resolution: <span id="img-res-val" class="mono">96</span></label>
+          <input type="range" id="img-res" min="32" max="192" step="16" value="96" />
+        </div>
+        <button id="btn-image-generate" class="btn-primary" disabled>Convert to model</button>
+      </section>
+      <div id="ai-status" class="ai-status" hidden></div>
+    </aside>
+
+    <!-- CENTER: viewport -->
+    <section id="viewport-wrap">
+      <div id="viewport"></div>
+      <div id="viewport-toolbar">
+        <button data-view="solid" class="vt-btn active" title="Solid shading">Solid</button>
+        <button data-view="wireframe" class="vt-btn" title="Wireframe">Wire</button>
+        <button data-view="normals" class="vt-btn" title="Normals view">Normals</button>
+        <span class="vt-sep"></span>
+        <button id="btn-autorotate" class="vt-btn" title="Turntable">Spin</button>
+        <button id="btn-grid" class="vt-btn active" title="Floor grid">Grid</button>
+        <span class="vt-sep"></span>
+        <button id="btn-bg" class="vt-btn" title="Cycle background: studio / light / night">Bg</button>
+        <button id="btn-shot" class="vt-btn" title="Download a PNG screenshot">Shot</button>
+      </div>
+      <div id="viewport-stats" class="mono">— triangles</div>
+      <div id="empty-state">
+        <div class="empty-mark">◆</div>
+        <p>The bench is empty. Try a suggestion chip on the left,<br/>type your own idea, or drop an image anywhere.</p>
+      </div>
+      <div id="toast" hidden></div>
+    </section>
+
+    <!-- RIGHT: properties -->
+    <aside id="panel-right">
+      <details open>
+        <summary>Model</summary>
+        <div id="model-info" class="model-info">The bench is empty.</div>
+      </details>
+
+      <details open>
+        <summary>Material</summary>
+        <div class="ctrl-grid">
+          <label for="mat-color">Color</label>
+          <input type="color" id="mat-color" value="#e8965a" />
+          <label for="mat-metal">Metallic <span id="mat-metal-val" class="mono">0.1</span></label>
+          <input type="range" id="mat-metal" min="0" max="1" step="0.05" value="0.1" />
+          <label for="mat-rough">Roughness <span id="mat-rough-val" class="mono">0.8</span></label>
+          <input type="range" id="mat-rough" min="0" max="1" step="0.05" value="0.8" />
+          <label for="mat-texture">Texture</label>
+          <select id="mat-texture">
+            <option value="none">None</option>
+            <option value="checker">Checker</option>
+            <option value="stripes">Stripes</option>
+            <option value="noise">Noise</option>
+          </select>
+          <button id="btn-mat-apply" class="btn-small">Apply to all</button>
+          <button id="btn-mat-reset" class="btn-small">Original colors</button>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Stylize</summary>
+        <div class="ctrl-grid">
+          <button id="btn-voxelize" class="btn-small">Voxelize</button>
+          <button id="btn-lowpoly" class="btn-small">Low-poly</button>
+          <button id="btn-toon" class="btn-small">Toon</button>
+          <button id="btn-unstyle" class="btn-small">Undo style</button>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Transform</summary>
+        <div class="ctrl-grid">
+          <label for="tr-scale">Scale <span id="tr-scale-val" class="mono">1.0</span></label>
+          <input type="range" id="tr-scale" min="0.2" max="3" step="0.1" value="1" />
+          <label for="tr-roty">Rotate Y <span id="tr-roty-val" class="mono">0°</span></label>
+          <input type="range" id="tr-roty" min="-180" max="180" step="5" value="0" />
+          <label for="tr-posy">Lift <span id="tr-posy-val" class="mono">0.0</span></label>
+          <input type="range" id="tr-posy" min="-2" max="2" step="0.1" value="0" />
+          <label class="check-row"><input type="checkbox" id="tr-smooth" /> Smooth shading</label>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Export</summary>
+        <div class="ctrl-grid">
+          <button id="btn-export-glb" class="btn-small">Download GLB</button>
+          <button id="btn-export-obj" class="btn-small">Download OBJ</button>
+          <button id="btn-export-stl" class="btn-small">Download STL (3D print)</button>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Name this piece</summary>
+        <div class="ctrl-grid">
+          <input type="text" id="save-name" placeholder="name this piece…" />
+          <button id="btn-save" class="btn-small btn-accent">Apply name</button>
+          <p class="hint">Every make lands in History below automatically — this just names it.</p>
+        </div>
+      </details>
+    </aside>
+  </main>
+
+  <!-- BOTTOM: library -->
+  <footer id="library-bar">
+    <span class="lib-title">HISTORY <span class="mono" id="lib-count">(0)</span></span>
+    <div id="library-items"></div>
+  </footer>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

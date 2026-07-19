@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+backend/.venv/
+
+# downloaded model weights (~7GB) — fetched by backend/setup.bat
+backend/models/
+
+# TripoSR source — cloned by backend/setup.bat
+backend/vendor/
+
+# local test artifacts
+backend/test_output.glb
+backend/test_output_preview.png
+backend/output/
+.playwright-mcp/
+*.log
+
+# python
+__pycache__/
+*.pyc
+
+# editor / os noise
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
