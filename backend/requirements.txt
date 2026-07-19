@@ -1,0 +1,22 @@
+# Kilnform backend — Python 3.12 + CUDA 12.8 (RTX 50xx / Blackwell)
+# torch comes from its own index: uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+omegaconf
+pillow
+einops
+transformers>=4.45,<5
+trimesh
+rembg
+onnxruntime
+huggingface-hub
+diffusers
+accelerate
+safetensors
+scikit-image
+numpy
+imageio
+fastapi
+uvicorn[standard]
+python-multipart
+sentencepiece
+sacremoses
+# torchmcubes is intentionally NOT installed — backend/torchmcubes.py shims it (Windows build issues)
