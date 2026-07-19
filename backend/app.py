@@ -1,7 +1,32 @@
 """Kilnform local AI backend — listens on 127.0.0.1 only, closed to the outside."""
 import base64
 import io
+import sys
 import threading
+
+if sys.platform == "win32":
+    # Windows EcoQoS throttles background/minimized console processes onto
+    # efficiency cores — a make measured 4x slower. Opt this process out.
+    try:
+        import ctypes
+
+        class _PowerThrottlingState(ctypes.Structure):
+            _fields_ = [
+                ("Version", ctypes.c_ulong),
+                ("ControlMask", ctypes.c_ulong),
+                ("StateMask", ctypes.c_ulong),
+            ]
+
+        _PROCESS_POWER_THROTTLING_EXECUTION_SPEED = 0x1
+        _state = _PowerThrottlingState(1, _PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0)
+        ctypes.windll.kernel32.SetProcessInformation(
+            ctypes.windll.kernel32.GetCurrentProcess(),
+            4,  # ProcessPowerThrottling
+            ctypes.byref(_state),
+            ctypes.sizeof(_state),
+        )
+    except Exception:
+        pass
 
 import torch
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException

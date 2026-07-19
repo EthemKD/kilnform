@@ -76,7 +76,9 @@ def get_rembg():
     if "rembg" not in _cache:
         _log("opening rembg session...")
         import rembg
-        _cache["rembg"] = rembg.new_session()
+        # isnet cuts cleaner silhouettes than the default u2net; edge quality
+        # feeds straight into mesh quality
+        _cache["rembg"] = rembg.new_session("isnet-general-use")
     return _cache["rembg"]
 
 
@@ -109,7 +111,7 @@ def text_to_image(prompt_en: str, seed: int | None = None) -> Image.Image:
     )
     image = pipe(
         prompt=template,
-        num_inference_steps=2,
+        num_inference_steps=4,
         guidance_scale=0.0,
         height=512,
         width=512,
@@ -139,10 +141,22 @@ def image_to_mesh(image: Image.Image, mc_resolution: int = 256) -> tuple[bytes, 
     # make sure the skimage shim's winding faces outward
     if mesh.volume < 0:
         mesh.invert()
-    # TripoSR builds z-up; glTF/three.js expect y-up
-    mesh.apply_transform(trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0]))
 
-    glb = mesh.export(file_type="glb")
+    # soften marching-cubes staircase artifacts; vertex attributes ride along
+    trimesh.smoothing.filter_taubin(mesh, lamb=0.5, nu=0.53, iterations=5)
+
+    _stage("texturing")
+    try:
+        import texbake
+        out_mesh, _ = texbake.bake(mesh, model, scene_codes[0])
+    except Exception as exc:  # e.g. no GL context on a headless box
+        _log(f"texture bake failed ({exc!r}); falling back to vertex colors")
+        out_mesh = mesh
+
+    # TripoSR builds z-up; glTF/three.js expect y-up
+    out_mesh.apply_transform(trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0]))
+
+    glb = out_mesh.export(file_type="glb")
     if DEVICE == "cuda":
         torch.cuda.empty_cache()  # release activation memory between makes
     return glb, processed
