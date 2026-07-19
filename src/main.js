@@ -145,7 +145,9 @@ async function pollAi(first = false) {
     $('engine-ai').disabled = true;
     badge.className = 'hint err';
     badge.textContent = 'AI backend is off (run start.bat) — instant mode active';
-    if (state.engine === 'ai') setEngine('proc', false);
+    // a make can starve the 2s health timeout (xatlas pegs every core) —
+    // never demote the engine mid-make on a single missed poll
+    if (state.engine === 'ai' && !state.busy) setEngine('proc', false);
   }
 }
 pollAi(true);
@@ -159,6 +161,7 @@ const STAGE_LABELS = {
   cutting: 'cutting out the subject',
   sculpting: 'sculpting the mesh',
   extracting: 'extracting geometry',
+  texturing: 'baking the texture',
 };
 let statusTimer = null;
 function showAiStatus() {

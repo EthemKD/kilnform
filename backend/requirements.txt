@@ -19,4 +19,7 @@ uvicorn[standard]
 python-multipart
 sentencepiece
 sacremoses
+xatlas
+moderngl
+fast_simplification
 # torchmcubes is intentionally NOT installed — backend/torchmcubes.py shims it (Windows build issues)
