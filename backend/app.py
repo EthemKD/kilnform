@@ -75,6 +75,7 @@ class TextRequest(BaseModel):
     prompt: str
     seed: int | None = None
     resolution: int = 256
+    tier: str = "mc"  # "mc" = TripoSR at `resolution`; "ultra" = Hunyuan3D-2mini
 
 
 def _pack(result):
@@ -111,10 +112,15 @@ def warmup():
 def text_to_3d(req: TextRequest):
     if not req.prompt.strip():
         raise HTTPException(400, "empty prompt")
+    if req.tier not in ("mc", "ultra"):
+        raise HTTPException(400, "tier must be 'mc' or 'ultra'")
     _ensure_warm()
     try:
         result = pipeline.generate_from_text(
-            req.prompt.strip(), seed=req.seed, mc_resolution=min(max(req.resolution, 64), 320)
+            req.prompt.strip(),
+            seed=req.seed,
+            mc_resolution=min(max(req.resolution, 64), 320),
+            tier=req.tier,
         )
     except HTTPException:
         raise
@@ -124,7 +130,11 @@ def text_to_3d(req: TextRequest):
 
 
 @app.post("/api/image-to-3d")
-async def image_to_3d(file: UploadFile = File(...), resolution: int = Form(256)):
+async def image_to_3d(
+    file: UploadFile = File(...), resolution: int = Form(256), tier: str = Form("mc")
+):
+    if tier not in ("mc", "ultra"):
+        raise HTTPException(400, "tier must be 'mc' or 'ultra'")
     data = await file.read()
     if len(data) > 30 * 1024 * 1024:
         raise HTTPException(413, "file too large")
@@ -136,7 +146,7 @@ async def image_to_3d(file: UploadFile = File(...), resolution: int = Form(256))
     try:
         _ensure_warm()
         result = await run_in_threadpool(
-            pipeline.generate_from_image, image, min(max(resolution, 64), 320)
+            pipeline.generate_from_image, image, min(max(resolution, 64), 320), tier
         )
     except HTTPException:
         raise

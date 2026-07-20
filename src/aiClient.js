@@ -44,21 +44,31 @@ export async function progress() {
   }
 }
 
-export async function textTo3d(prompt, seed = null, resolution = 256, signal = null) {
+/* `detail` is a marching-cubes resolution (number) or the string 'ultra'. */
+function tierOf(detail) {
+  return detail === 'ultra'
+    ? { resolution: 320, tier: 'ultra' }
+    : { resolution: detail, tier: 'mc' };
+}
+
+export async function textTo3d(prompt, seed = null, detail = 256, signal = null) {
+  const { resolution, tier } = tierOf(detail);
   const r = await fetch(`${BASE}/api/text-to-3d`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, seed, resolution }),
+    body: JSON.stringify({ prompt, seed, resolution, tier }),
     signal,
   });
   if (!r.ok) throw new Error((await r.text()).slice(0, 200) || `HTTP ${r.status}`);
   return unpack(await r.json());
 }
 
-export async function imageTo3d(file, resolution = 256, signal = null) {
+export async function imageTo3d(file, detail = 256, signal = null) {
+  const { resolution, tier } = tierOf(detail);
   const form = new FormData();
   form.append('file', file);
   form.append('resolution', String(resolution));
+  form.append('tier', tier);
   const r = await fetch(`${BASE}/api/image-to-3d`, { method: 'POST', body: form, signal });
   if (!r.ok) throw new Error((await r.text()).slice(0, 200) || `HTTP ${r.status}`);
   return unpack(await r.json());

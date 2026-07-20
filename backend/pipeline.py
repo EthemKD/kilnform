@@ -104,6 +104,7 @@ def warmup():
 
 def text_to_image(prompt_en: str, seed: int | None = None) -> Image.Image:
     pipe = get_sd()
+    pipe.to(DEVICE)  # an Ultra make may have parked it on CPU
     gen = torch.Generator(device=DEVICE).manual_seed(seed) if seed is not None else None
     template = (
         f"a high quality 3d render of {prompt_en}, single object, centered, "
@@ -120,7 +121,56 @@ def text_to_image(prompt_en: str, seed: int | None = None) -> Image.Image:
     return image
 
 
-def image_to_mesh(image: Image.Image, mc_resolution: int = 256) -> tuple[bytes, Image.Image]:
+def _ultra_mesh(rgba: Image.Image, processed: Image.Image, seed: int | None):
+    """Ultra tier: Hunyuan3D-2mini sculpts the shape; TripoSR only paints it.
+
+    Returns (mesh aligned to TripoSR's frame, TripoSR scene_codes for texbake).
+    """
+    import hunyuan
+
+    _stage("sculpting-ultra")
+    # 8GB budget: only one big model on the GPU at a time. SD-Turbo steps
+    # aside for Hunyuan, Hunyuan steps aside for TripoSR + the bake.
+    if DEVICE == "cuda" and "sd" in _cache:
+        _cache["sd"].to("cpu")
+        torch.cuda.empty_cache()
+    mesh = hunyuan.generate(rgba, seed=seed)
+    hunyuan.unload_gpu()
+    mesh.apply_transform(HY_TO_TSR_ROT)
+
+    # TripoSR forward pass on the same cutout: its triplane color field is what
+    # texbake samples to paint the Hunyuan geometry
+    model = get_tsr()
+    with torch.no_grad():
+        scene_codes = model([processed], device=DEVICE)
+
+    # Scale/offset differ per object (each model normalizes its own way), so
+    # fit the rotated mesh onto a quick low-res TripoSR mesh of the same image.
+    ref = model.extract_mesh(scene_codes, False, resolution=128)[0]
+    src_min, src_max = mesh.bounds
+    dst_min, dst_max = ref.bounds
+    scale = (dst_max - dst_min) / np.maximum(src_max - src_min, 1e-9)
+    fit = np.eye(4)
+    fit[:3, :3] = np.diag(scale)
+    fit[:3, 3] = dst_min - scale * src_min
+    mesh.apply_transform(fit)
+    return mesh, scene_codes
+
+
+# Rotates Hunyuan3D-2mini output into TripoSR's frame: Hunyuan is y-up facing
+# +z, TripoSR is z-up facing +x, so axes map (x,y,z) -> (z,x,y). Verified
+# empirically by chamfer search + a visual cross-bake (gnome, seed 0).
+HY_TO_TSR_ROT = np.array([
+    [0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+])
+
+
+def image_to_mesh(
+    image: Image.Image, mc_resolution: int = 256, tier: str = "mc", seed: int | None = None
+) -> tuple[bytes, Image.Image]:
     """PIL image -> (GLB bytes, processed preview image)."""
     from tsr.utils import remove_background, resize_foreground
 
@@ -132,23 +182,28 @@ def image_to_mesh(image: Image.Image, mc_resolution: int = 256) -> tuple[bytes, 
     arr = arr[:, :, :3] * arr[:, :, 3:4] + (1 - arr[:, :, 3:4]) * 0.5
     processed = Image.fromarray((arr * 255.0).astype(np.uint8))
 
-    _stage("sculpting")
-    with torch.no_grad():
-        scene_codes = model([processed], device=DEVICE)
-    _stage("extracting")
-    mesh = model.extract_mesh(scene_codes, True, resolution=mc_resolution)[0]
+    if tier == "ultra":
+        mesh, scene_codes = _ultra_mesh(img, processed, seed)
+        face_budget = 100000  # Ultra's point is geometry; keep more of it
+    else:
+        _stage("sculpting")
+        with torch.no_grad():
+            scene_codes = model([processed], device=DEVICE)
+        _stage("extracting")
+        mesh = model.extract_mesh(scene_codes, True, resolution=mc_resolution)[0]
 
-    # make sure the skimage shim's winding faces outward
-    if mesh.volume < 0:
-        mesh.invert()
+        # make sure the skimage shim's winding faces outward
+        if mesh.volume < 0:
+            mesh.invert()
 
-    # soften marching-cubes staircase artifacts; vertex attributes ride along
-    trimesh.smoothing.filter_taubin(mesh, lamb=0.5, nu=0.53, iterations=5)
+        # soften marching-cubes staircase artifacts; vertex attributes ride along
+        trimesh.smoothing.filter_taubin(mesh, lamb=0.5, nu=0.53, iterations=5)
+        face_budget = 50000
 
     _stage("texturing")
     try:
         import texbake
-        out_mesh, _ = texbake.bake(mesh, model, scene_codes[0])
+        out_mesh, _ = texbake.bake(mesh, model, scene_codes[0], face_budget=face_budget)
     except Exception as exc:  # e.g. no GL context on a headless box
         _log(f"texture bake failed ({exc!r}); falling back to vertex colors")
         out_mesh = mesh
@@ -162,7 +217,9 @@ def image_to_mesh(image: Image.Image, mc_resolution: int = 256) -> tuple[bytes, 
     return glb, processed
 
 
-def generate_from_text(prompt: str, seed: int | None = None, mc_resolution: int = 256):
+def generate_from_text(
+    prompt: str, seed: int | None = None, mc_resolution: int = 256, tier: str = "mc"
+):
     t0 = time.time()
     try:
         _stage("translating")
@@ -170,7 +227,7 @@ def generate_from_text(prompt: str, seed: int | None = None, mc_resolution: int 
         _log(f"prompt: {prompt!r} -> {prompt_en!r}")
         _stage("painting")
         image = text_to_image(prompt_en, seed)
-        glb, preview = image_to_mesh(image, mc_resolution)
+        glb, preview = image_to_mesh(image, mc_resolution, tier=tier, seed=seed)
     finally:
         _stage("idle")
     return {
@@ -181,10 +238,10 @@ def generate_from_text(prompt: str, seed: int | None = None, mc_resolution: int 
     }
 
 
-def generate_from_image(image: Image.Image, mc_resolution: int = 256):
+def generate_from_image(image: Image.Image, mc_resolution: int = 256, tier: str = "mc"):
     t0 = time.time()
     try:
-        glb, preview = image_to_mesh(image, mc_resolution)
+        glb, preview = image_to_mesh(image, mc_resolution, tier=tier)
     finally:
         _stage("idle")
     return {

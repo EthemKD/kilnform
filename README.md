@@ -5,7 +5,7 @@ A local 3D workshop. Type a prompt or hand over an image; a 3D model gets made
 leaving localhost.
 
 ![Kilnform: "garden gnome with red hat" sculpted and texture-baked locally](docs/screenshot.png)
-<p align="center"><i>"garden gnome with red hat" → 50,000 triangles + a baked 1024² UV texture in 16 seconds on an RTX 5060 Laptop — entirely offline. The shelf below holds earlier makes: a teapot, a treasure chest, two fountains.</i></p>
+<p align="center"><i>"garden gnome with red hat" on the Ultra tier — Hunyuan3D-2mini sculpts 100,000 triangles, TripoSR bakes the 1024² texture, ~30 seconds warm on an RTX 5060 Laptop — entirely offline. The shelf below holds earlier makes.</i></p>
 
 Two engines share one bench:
 
@@ -13,7 +13,12 @@ Two engines share one bench:
   (opus-mt, CPU), painted into a reference image (SD-Turbo), cut out (rembg/isnet),
   sculpted into a real mesh (TripoSR) on your GPU, then smoothed and baked into a
   UV-textured GLB. A prompt like `çeşme` becomes an actual tiered fountain — crisp
-  1024² texture included — in well under half a minute.
+  1024² texture included — in well under half a minute. Four detail tiers:
+  **Draft / Standard / Fine** trade marching-cubes resolution for speed (5–16s),
+  and **Ultra** hands the sculpting to a dedicated shape-generation model,
+  Hunyuan3D-2mini (0.6B flow-matching DiT), for visibly sharper geometry —
+  100k triangles in ~30s warm. TripoSR still paints it: its triplane color field
+  is baked onto the Hunyuan mesh, so Ultra keeps the same textured-GLB output.
 - **Instant** — a deterministic procedural generator. It parses Turkish/English
   keywords (house, tree, car, robot, rocket… plus color/size/material adjectives)
   and builds parametric models with seeded variations. No GPU, no wait, works on
@@ -40,14 +45,18 @@ Prompts can be Turkish or English — the UI is English, the understanding is bo
 | Node.js | 18+ | 18+ |
 | Python | — | 3.12 (installed automatically via `uv`) |
 | GPU | not needed | NVIDIA, ~6.5GB free VRAM (8GB card recommended); Blackwell (RTX 50xx) needs the CUDA 12.8 wheels the setup installs. CPU fallback works but is slow (~1–2 min/model) |
-| RAM | any | 16GB+ recommended (backend holds ~4–5GB) |
-| Disk | ~200MB | ~12GB (PyTorch + model weights) |
+| RAM | any | 16GB+ recommended (backend holds ~4–5GB; Ultra parks idle models in RAM) |
+| Disk | ~200MB | ~12GB (PyTorch + model weights); +8GB if you use the Ultra tier (Hunyuan3D-2mini weights, downloaded on first Ultra make) |
 
-Measured on an RTX 5060 Laptop (8GB): a make is a 5–16s burst depending on the
-detail tier (Fine bakes the 1024² texture), ~45W / 64°C peak, ~6.5GB VRAM peak,
-idle between requests. Laptop-friendly. One Windows gotcha handled in code: a
-minimized backend console can be put in EcoQoS ("efficiency mode"), which made
-generation 4x slower — the backend opts itself out at startup.
+Measured on an RTX 5060 Laptop (8GB): a Draft/Standard/Fine make is a 5–16s
+burst depending on the detail tier (Fine bakes the 1024² texture), ~45W / 64°C
+peak, ~6.5GB VRAM peak, idle between requests. An Ultra make is ~30s warm
+(~52s on the first make after boot): diffusion sampling is only ~8s of that,
+the rest is texture baking and model shuffling — SD-Turbo and Hunyuan take
+turns on the GPU so the whole thing stays inside 8GB instead of spilling into
+shared memory. Laptop-friendly. One Windows gotcha handled in code: a minimized
+backend console can be put in EcoQoS ("efficiency mode"), which made generation
+4x slower — the backend opts itself out at startup.
 
 ## Setup
 
@@ -74,6 +83,14 @@ before export. Texture baking ([backend/texbake.py](backend/texbake.py)) is
 adapted from TripoSR's bake code with two fixes: one reused GL context instead
 of a fresh (leaked) one per make, and triplane color queries on the GPU.
 
+The Ultra tier uses only the shape half of Hunyuan3D-2 (`hy3dgen.shapegen`),
+which also needs no compiled extensions — the parts that do (its texture
+painter) are exactly the parts Kilnform replaces with its own bake. Hunyuan's
+mesh comes out in a different coordinate frame than TripoSR's; a fixed axis
+permutation plus a per-make bounding-box fit (against a quick low-res TripoSR
+mesh of the same image) lines the two up so the color bake lands correctly
+([backend/hunyuan.py](backend/hunyuan.py)).
+
 ## Licenses of the parts
 
 Kilnform's own code is yours to license as you wish. The pieces it stands on:
@@ -84,4 +101,13 @@ Kilnform's own code is yours to license as you wish. The pieces it stands on:
   non-commercial research license**. Weights are downloaded by each user at setup,
   not redistributed here. If you need commercial use, swap the model id in
   `backend/pipeline.py` for a permissively licensed one.
+- [Hunyuan3D-2](https://github.com/Tencent-Hunyuan/Hunyuan3D-2) (Ultra tier, code
+  & weights) — **Tencent Hunyuan 3D 2.0 Community License**. Commercial use is
+  allowed up to 100M monthly active users, but **use is not licensed in the EU,
+  the UK, or South Korea** — if you are there, stick to the Draft/Standard/Fine
+  tiers, which don't touch Hunyuan. Weights are downloaded by each user on the
+  first Ultra make, never redistributed here.
 - Helsinki-NLP opus-mt-tr-en — CC-BY 4.0 · rembg/u2net — Apache-2.0
+- UI fonts [Fraunces](https://github.com/undercasetype/Fraunces) and
+  [Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) — SIL OFL 1.1,
+  served locally from `public/fonts` (no runtime font CDN requests)
