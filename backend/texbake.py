@@ -12,6 +12,23 @@ import trimesh
 import xatlas
 from PIL import Image
 
+# TripoSR's triplane color is a sigmoid of network features, so it comes out
+# low-saturation, low-contrast, with shadow baked in — textures look washed out.
+# These gently lift it back toward lifelike (kept mild on purpose: overcooking
+# reads as garish "AI" color).
+COLOR_SATURATION = 1.28
+COLOR_CONTRAST = 1.08
+COLOR_BRIGHTNESS = 0.015
+_LUMA = np.array([0.299, 0.587, 0.114], dtype=np.float32)
+
+
+def _lift_color(colors):
+    """Nudge flat triplane color toward vivid. colors: HxWx3 float in [0,1]."""
+    lum = colors @ _LUMA
+    colors = lum[..., None] + (colors - lum[..., None]) * COLOR_SATURATION
+    colors = (colors - 0.5) * COLOR_CONTRAST + 0.5 + COLOR_BRIGHTNESS
+    return np.clip(colors, 0.0, 1.0)
+
 BASIC_VERTEX_SHADER = """
     #version 330
     in vec2 in_uv;
@@ -162,6 +179,7 @@ def bake(mesh, model, scene_code, texture_resolution=1024, face_budget=50000):
         queried["color"].float().cpu().numpy()
         .reshape(texture_resolution, texture_resolution, 3)
     )
+    colors = _lift_color(colors)  # counter TripoSR's washed-out triplane color
     mask = flat[:, 3].reshape(texture_resolution, texture_resolution) == 0.0
     colors[mask] = 0.5  # neutral fill outside the atlas islands
 
@@ -171,7 +189,7 @@ def bake(mesh, model, scene_code, texture_resolution=1024, face_budget=50000):
         Image.FLIP_TOP_BOTTOM
     )
     material = trimesh.visual.material.PBRMaterial(
-        baseColorTexture=texture, metallicFactor=0.0, roughnessFactor=1.0
+        baseColorTexture=texture, metallicFactor=0.0, roughnessFactor=0.85
     )
     textured = trimesh.Trimesh(
         vertices=mesh.vertices[vmapping],
