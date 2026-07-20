@@ -23,6 +23,11 @@ if not exist vendor\TripoSR\tsr (
   git clone --depth 1 https://github.com/VAST-AI-Research/TripoSR.git vendor\TripoSR
 )
 
+if not exist vendor\Hunyuan3D-2\hy3dgen (
+  echo Fetching Hunyuan3D-2 for the Ultra tier ^(shapegen only, nothing compiles^)...
+  git clone --depth 1 https://github.com/Tencent-Hunyuan/Hunyuan3D-2.git vendor\Hunyuan3D-2
+)
+
 echo Downloading / verifying models (first run pulls ~5GB)...
 .venv\Scripts\python.exe test_pipeline.py
 

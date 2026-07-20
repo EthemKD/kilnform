@@ -16,7 +16,8 @@ const viewer = new Viewer($('viewport'));
 const state = {
   model: null, pristine: null, prompt: '', variation: 0,
   engine: 'proc', aiReady: false, busy: false,
-  detail: Number(localStorage.getItem('kilnform-detail')) || 256,
+  // 128 | 256 | 320 (marching-cubes resolution) or 'ultra' (Hunyuan3D tier)
+  detail: ((v) => (v === 'ultra' ? v : Number(v) || 256))(localStorage.getItem('kilnform-detail')),
   lastMake: null,   // { via, label, seconds } shown in the Model card
   lastSaveId: null, // history record the "Apply name" button renames
 };
@@ -116,11 +117,11 @@ function setEngine(engine, remember = true) {
 $('engine-ai').addEventListener('click', () => setEngine('ai'));
 $('engine-proc').addEventListener('click', () => setEngine('proc'));
 
-/* detail (marching-cubes resolution) segment */
+/* detail segment: three marching-cubes tiers plus the Hunyuan3D 'ultra' tier */
 document.querySelectorAll('.seg-btn').forEach((b) => {
-  b.classList.toggle('active', Number(b.dataset.res) === state.detail);
+  b.classList.toggle('active', (b.dataset.res === 'ultra' ? 'ultra' : Number(b.dataset.res)) === state.detail);
   b.addEventListener('click', () => {
-    state.detail = Number(b.dataset.res);
+    state.detail = b.dataset.res === 'ultra' ? 'ultra' : Number(b.dataset.res);
     localStorage.setItem('kilnform-detail', String(state.detail));
     document.querySelectorAll('.seg-btn').forEach((x) => x.classList.toggle('active', x === b));
   });
@@ -160,6 +161,7 @@ const STAGE_LABELS = {
   painting: 'painting the reference image',
   cutting: 'cutting out the subject',
   sculpting: 'sculpting the mesh',
+  'sculpting-ultra': 'sculpting the mesh (Ultra, takes a while)',
   extracting: 'extracting geometry',
   texturing: 'baking the texture',
 };
@@ -225,7 +227,11 @@ async function generateTextAI(prompt, seed) {
   try {
     const res = await ai.textTo3d(prompt, seed, state.detail, currentAbort.signal);
     const group = await loadGlbIntoScene(res.glb, prompt);
-    state.lastMake = { via: 'AI', label: `${prompt} · V${seed + 1}`, seconds: res.seconds };
+    state.lastMake = {
+      via: state.detail === 'ultra' ? 'AI · Ultra' : 'AI',
+      label: `${prompt} · V${seed + 1}`,
+      seconds: res.seconds,
+    };
     setActiveModel(group);
     $('ai-preview').src = res.previewUrl;
     $('ai-preview-wrap').hidden = false;
@@ -259,7 +265,11 @@ async function generateImageAI(file) {
     const res = await ai.imageTo3d(file, state.detail, currentAbort.signal);
     const name = file.name.replace(/\.[^.]+$/, '') || 'image piece';
     const group = await loadGlbIntoScene(res.glb, name);
-    state.lastMake = { via: 'AI · image', label: name, seconds: res.seconds };
+    state.lastMake = {
+      via: state.detail === 'ultra' ? 'AI · image · Ultra' : 'AI · image',
+      label: name,
+      seconds: res.seconds,
+    };
     setActiveModel(group);
     toast(`AI model ready (${res.seconds}s).`);
     autoSave(name);

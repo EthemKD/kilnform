@@ -22,4 +22,8 @@ sacremoses
 xatlas
 moderngl
 fast_simplification
+# Ultra tier (Hunyuan3D-2mini shapegen — no compiled extensions needed)
+opencv-python-headless
+pymeshlab
+pyyaml
 # torchmcubes is intentionally NOT installed — backend/torchmcubes.py shims it (Windows build issues)
