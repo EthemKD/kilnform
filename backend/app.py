@@ -35,6 +35,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from PIL import Image
 
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()  # phone photos (.heic/.heif) become uploadable
+except ImportError:
+    pass
+
 import pipeline
 
 

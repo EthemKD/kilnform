@@ -36,7 +36,7 @@
             <button class="seg-btn" data-res="128" title="~fastest, coarse mesh">Draft</button>
             <button class="seg-btn active" data-res="256" title="balanced">Standard</button>
             <button class="seg-btn" data-res="320" title="densest mesh, a bit slower">Fine</button>
-            <button class="seg-btn" data-res="ultra" title="Hunyuan3D shape model — sharpest geometry, slowest (~30-60s)">Ultra</button>
+            <button class="seg-btn" data-res="ultra" title="Hunyuan3D shape model — sharpest geometry, slowest (~45-60s; first make loads 8GB of weights)">Ultra</button>
           </div>
         </div>
       </div>
@@ -76,13 +76,18 @@
       <section class="tab-page" id="page-image" hidden>
         <label class="field-label" for="image-input">Image — it stays on this machine</label>
         <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Pick an image">
-          <input type="file" id="image-input" accept="image/*" hidden />
+          <input type="file" id="image-input" accept="image/*,.heic,.heif" hidden />
           <div id="dz-idle">
             <span class="dz-mark">⇩</span>
             <span>Click to pick an image</span>
             <small>or drop it anywhere · or paste with Ctrl+V</small>
           </div>
           <img id="image-preview" alt="Selected image preview" hidden />
+          <div id="image-preview-note" class="hint" hidden></div>
+        </div>
+        <div id="cutout-wrap" hidden>
+          <span class="field-label">What the AI cut out</span>
+          <img id="cutout-preview" alt="Subject the AI cut out of the image before sculpting" />
         </div>
         <div id="proc-image-opts">
           <label class="field-label" for="img-mode">Method</label>
@@ -134,7 +139,7 @@
         <summary>Material</summary>
         <div class="ctrl-grid">
           <label for="mat-color">Color</label>
-          <input type="color" id="mat-color" value="#e8965a" />
+          <input type="color" id="mat-color" value="#b08d63" />
           <label for="mat-metal">Metallic <span id="mat-metal-val" class="mono">0.1</span></label>
           <input type="range" id="mat-metal" min="0" max="1" step="0.05" value="0.1" />
           <label for="mat-rough">Roughness <span id="mat-rough-val" class="mono">0.8</span></label>

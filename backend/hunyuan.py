@@ -41,7 +41,7 @@ def unload_gpu():
         torch.cuda.empty_cache()
 
 
-def generate(rgba_image, seed=None, steps=30, octree_resolution=380, guidance=5.0):
+def generate(rgba_image, seed=None, steps=40, octree_resolution=448, guidance=5.0):
     """RGBA cutout -> cleaned trimesh in Hunyuan's own frame."""
     from hy3dgen.shapegen import DegenerateFaceRemover, FloaterRemover
 

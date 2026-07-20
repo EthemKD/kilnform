@@ -129,10 +129,18 @@ def _ultra_mesh(rgba: Image.Image, processed: Image.Image, seed: int | None):
     import hunyuan
 
     _stage("sculpting-ultra")
-    # 8GB budget: only one big model on the GPU at a time. SD-Turbo steps
-    # aside for Hunyuan, Hunyuan steps aside for TripoSR + the bake.
-    if DEVICE == "cuda" and "sd" in _cache:
-        _cache["sd"].to("cpu")
+    # 8GB budget: only one big model on the GPU at a time. SD-Turbo and
+    # TripoSR both step aside so Hunyuan's octree decode gets full headroom —
+    # measured 2-3x faster than leaving TripoSR resident (which forces the
+    # decode to spill into shared GPU memory). Separately, octree_resolution
+    # itself must stay <=448: at 512 the decode's *system RAM* footprint (not
+    # VRAM) pushed the whole backend process past ~23GB and into pagefile
+    # swap, which cost far more than the CPU<->GPU shuffle ever does.
+    if DEVICE == "cuda":
+        if "sd" in _cache:
+            _cache["sd"].to("cpu")
+        if "tsr" in _cache:
+            _cache["tsr"].to("cpu")
         torch.cuda.empty_cache()
     mesh = hunyuan.generate(rgba, seed=seed)
     hunyuan.unload_gpu()
@@ -141,6 +149,7 @@ def _ultra_mesh(rgba: Image.Image, processed: Image.Image, seed: int | None):
     # TripoSR forward pass on the same cutout: its triplane color field is what
     # texbake samples to paint the Hunyuan geometry
     model = get_tsr()
+    model.to(DEVICE)  # no-op unless a failed make left it parked
     with torch.no_grad():
         scene_codes = model([processed], device=DEVICE)
 
@@ -187,6 +196,7 @@ def image_to_mesh(
         face_budget = 100000  # Ultra's point is geometry; keep more of it
     else:
         _stage("sculpting")
+        model.to(DEVICE)  # no-op unless a failed Ultra make left it parked
         with torch.no_grad():
             scene_codes = model([processed], device=DEVICE)
         _stage("extracting")
