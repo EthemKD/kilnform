@@ -2,6 +2,7 @@
 # torch comes from its own index: uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 omegaconf
 pillow
+pillow-heif   # lets uploads be iPhone .heic/.heif photos
 einops
 transformers>=4.45,<5
 trimesh

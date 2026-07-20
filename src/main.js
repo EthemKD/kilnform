@@ -198,7 +198,8 @@ function setBusy(busy, cancellable = false) {
     gi.disabled = false; gi.textContent = 'Cancel'; gi.classList.add('cancel');
   } else {
     g.disabled = busy; g.textContent = 'Make it'; g.classList.remove('cancel');
-    gi.disabled = busy || !loadedImage; gi.textContent = 'Convert to model'; gi.classList.remove('cancel');
+    gi.disabled = busy || !(loadedImage || (loadedFile && state.engine === 'ai'));
+    gi.textContent = 'Convert to model'; gi.classList.remove('cancel');
   }
 }
 
@@ -271,6 +272,9 @@ async function generateImageAI(file) {
       seconds: res.seconds,
     };
     setActiveModel(group);
+    // show what the AI actually sculpted: the subject, cut from the background
+    $('cutout-preview').src = res.previewUrl;
+    $('cutout-wrap').hidden = false;
     toast(`AI model ready (${res.seconds}s).`);
     autoSave(name);
   } catch (err) {
@@ -344,10 +348,23 @@ document.querySelectorAll('.var-card').forEach((c) =>
 let loadedImage = null;
 let loadedFile = null;
 
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|gif|bmp|avif|heic|heif|tiff?)$/i;
+
+function looksLikeImage(file) {
+  // phone photos (HEIC) and some clipboard files arrive with an empty MIME
+  // type — fall back to the extension instead of silently ignoring them
+  return file.type.startsWith('image/') || (!file.type && IMAGE_EXTENSIONS.test(file.name || ''));
+}
+
 /** Central intake for images from the picker, drag & drop, or paste. */
 function loadImageFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
+  if (!file) return;
+  if (!looksLikeImage(file)) {
+    toast(`"${file.name || 'that file'}" doesn't look like an image — PNG, JPG, WEBP or HEIC work.`);
+    return;
+  }
   loadedFile = file;
+  loadedImage = null;
   const reader = new FileReader();
   reader.onload = () => {
     const img = $('image-preview');
@@ -357,9 +374,23 @@ function loadImageFile(file) {
       img.hidden = false;
       $('btn-image-generate').disabled = state.busy;
     };
+    img.onerror = () => {
+      // browser can't decode it (typically HEIC) — the AI backend still can
+      $('dz-idle').hidden = true;
+      img.hidden = true;
+      $('image-preview-note').hidden = false;
+      $('image-preview-note').textContent = `${file.name} — no browser preview for this format; the AI engine can still convert it.`;
+      $('btn-image-generate').disabled = state.busy || state.engine !== 'ai';
+    };
+    $('image-preview-note').hidden = true;
     img.src = reader.result; // data URL, memory only
   };
   reader.readAsDataURL(file);
+  // photos want the AI engine: it cuts out the subject and sculpts a real mesh
+  if (state.aiReady && state.engine !== 'ai') {
+    setEngine('ai');
+    toast('Switched to the AI engine — it cuts out the subject and sculpts it properly.');
+  }
   // bring the image tab forward so the preview is visible
   document.querySelector('.tab[data-tab="image"]').click();
 }
@@ -398,9 +429,12 @@ $('img-depth').addEventListener('input', (e) => { $('img-depth-val').textContent
 $('img-res').addEventListener('input', (e) => { $('img-res-val').textContent = e.target.value; });
 $('btn-image-generate').addEventListener('click', () => {
   if (state.busy) { currentAbort?.abort(); return; } // button reads "Cancel" while busy
-  if (!loadedImage) return;
   if (state.engine === 'ai' && state.aiReady && loadedFile) {
     generateImageAI(loadedFile);
+    return;
+  }
+  if (!loadedImage) {
+    toast('This format needs the AI engine — the browser can\'t read its pixels for Instant mode.');
     return;
   }
   const group = generateFromImage(loadedImage, $('img-mode').value, {

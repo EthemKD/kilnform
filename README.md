@@ -16,9 +16,12 @@ Two engines share one bench:
   1024² texture included — in well under half a minute. Four detail tiers:
   **Draft / Standard / Fine** trade marching-cubes resolution for speed (5–16s),
   and **Ultra** hands the sculpting to a dedicated shape-generation model,
-  Hunyuan3D-2mini (0.6B flow-matching DiT), for visibly sharper geometry —
-  100k triangles in ~30s warm. TripoSR still paints it: its triplane color field
-  is baked onto the Hunyuan mesh, so Ultra keeps the same textured-GLB output.
+  Hunyuan3D-2mini (0.6B flow-matching DiT) at a 448 octree resolution, for
+  visibly sharper geometry — 100k triangles in ~35s warm. TripoSR still paints
+  it: its triplane color field is baked onto the Hunyuan mesh, so Ultra keeps
+  the same textured-GLB output. Image uploads take PNG/JPG/WEBP and iPhone
+  HEIC photos; the subject is cut out of the background automatically and the
+  cutout is shown next to the result.
 - **Instant** — a deterministic procedural generator. It parses Turkish/English
   keywords (house, tree, car, robot, rocket… plus color/size/material adjectives)
   and builds parametric models with seeded variations. No GPU, no wait, works on
@@ -45,16 +48,21 @@ Prompts can be Turkish or English — the UI is English, the understanding is bo
 | Node.js | 18+ | 18+ |
 | Python | — | 3.12 (installed automatically via `uv`) |
 | GPU | not needed | NVIDIA, ~6.5GB free VRAM (8GB card recommended); Blackwell (RTX 50xx) needs the CUDA 12.8 wheels the setup installs. CPU fallback works but is slow (~1–2 min/model) |
-| RAM | any | 16GB+ recommended (backend holds ~4–5GB; Ultra parks idle models in RAM) |
+| RAM | any | 16GB+ for Draft–Fine; 24GB recommended for Ultra (idle models park in system RAM) |
 | Disk | ~200MB | ~12GB (PyTorch + model weights); +8GB if you use the Ultra tier (Hunyuan3D-2mini weights, downloaded on first Ultra make) |
 
 Measured on an RTX 5060 Laptop (8GB): a Draft/Standard/Fine make is a 5–16s
 burst depending on the detail tier (Fine bakes the 1024² texture), ~45W / 64°C
-peak, ~6.5GB VRAM peak, idle between requests. An Ultra make is ~30s warm
-(~52s on the first make after boot): diffusion sampling is only ~8s of that,
-the rest is texture baking and model shuffling — SD-Turbo and Hunyuan take
-turns on the GPU so the whole thing stays inside 8GB instead of spilling into
-shared memory. Laptop-friendly. One Windows gotcha handled in code: a minimized
+peak, ~6.5GB VRAM peak, idle between requests. An Ultra make is ~35s warm
+(~65-70s for the first request after the backend starts, while models load
+into RAM; longer still on the very first Ultra make ever, which also
+downloads 8GB of weights): diffusion sampling is ~11s of that, the rest is
+the 448-resolution surface decode, texture baking, and model shuffling —
+SD-Turbo, TripoSR, and Hunyuan all take turns on the GPU so the whole thing
+stays inside 8GB instead of spilling into shared GPU memory. A 512 octree
+resolution was tried and rejected: it looks sharper but its *system RAM*
+footprint (not VRAM) pushed the backend process past 23GB and into pagefile
+swap, tripling make times on a 24GB machine. Laptop-friendly. One Windows gotcha handled in code: a minimized
 backend console can be put in EcoQoS ("efficiency mode"), which made generation
 4x slower — the backend opts itself out at startup.
 
