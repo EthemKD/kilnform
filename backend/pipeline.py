@@ -106,14 +106,19 @@ def text_to_image(prompt_en: str, seed: int | None = None) -> Image.Image:
     pipe = get_sd()
     pipe.to(DEVICE)  # an Ultra make may have parked it on CPU
     gen = torch.Generator(device=DEVICE).manual_seed(seed) if seed is not None else None
+    # The reference image drives both the mesh (TripoSR/Hunyuan) and its color
+    # (TripoSR's forward pass), so wording it for a clean, evenly-lit, fully
+    # framed subject with vivid color pays off twice. Even lighting / "no harsh
+    # shadows" also keeps shadow from getting baked into the triplane color.
     template = (
-        f"a high quality 3d render of {prompt_en}, single object, centered, "
-        f"full object in view, soft studio lighting, plain light gray background"
+        f"a high quality 3d render of {prompt_en}, single centered object, "
+        f"full object fully in frame, vivid saturated colors, even soft studio "
+        f"lighting, no harsh shadows, plain light gray background"
     )
     image = pipe(
         prompt=template,
-        num_inference_steps=4,
-        guidance_scale=0.0,
+        num_inference_steps=8,  # SD-Turbo is tuned for 1-4; 8 sharpens the
+        guidance_scale=0.0,     # reference a little more, ~2-3s extra
         height=512,
         width=512,
         generator=gen,
@@ -215,7 +220,19 @@ def image_to_mesh(
         import texbake
         out_mesh, _ = texbake.bake(mesh, model, scene_codes[0], face_budget=face_budget)
     except Exception as exc:  # e.g. no GL context on a headless box
-        _log(f"texture bake failed ({exc!r}); falling back to vertex colors")
+        # Don't ship a blank gray model (Ultra's Hunyuan mesh has no vertex
+        # color of its own): sample TripoSR's triplane color straight onto the
+        # vertices instead. Same color source as the bake, minus the UV atlas.
+        _log(f"texture bake failed ({exc!r}); falling back to per-vertex triplane color")
+        try:
+            import texbake
+            pts = torch.tensor(np.asarray(mesh.vertices), dtype=torch.float32, device=DEVICE)
+            with torch.no_grad():
+                vc = model.renderer.query_triplane(model.decoder, pts, scene_codes[0])["color"]
+            vc = texbake._lift_color(vc.float().cpu().numpy().reshape(1, -1, 3))[0]
+            mesh.visual.vertex_colors = (vc * 255.0).astype(np.uint8)
+        except Exception as exc2:
+            _log(f"vertex-color fallback also failed ({exc2!r}); shipping untextured")
         out_mesh = mesh
 
     # TripoSR builds z-up; glTF/three.js expect y-up

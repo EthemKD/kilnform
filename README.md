@@ -10,10 +10,13 @@ leaving localhost.
 Two engines share one bench:
 
 - **AI · realistic** — a fully local pipeline: your prompt is translated if needed
-  (opus-mt, CPU), painted into a reference image (SD-Turbo), cut out (rembg/isnet),
-  sculpted into a real mesh (TripoSR) on your GPU, then smoothed and baked into a
-  UV-textured GLB. A prompt like `çeşme` becomes an actual tiered fountain — crisp
-  1024² texture included — in well under half a minute. Four detail tiers:
+  (opus-mt, CPU), painted into a reference image (SD-Turbo, 8 steps for a cleaner,
+  vividly-lit subject), cut out (rembg/isnet), sculpted into a real mesh (TripoSR)
+  on your GPU, then smoothed and baked into a UV-textured GLB. The baked color is
+  lifted out of TripoSR's naturally washed-out triplane range so textures read
+  lifelike rather than muddy. A prompt like `çeşme` becomes an actual tiered
+  fountain — crisp 1024² texture included — in well under half a minute. Four
+  detail tiers:
   **Draft / Standard / Fine** trade marching-cubes resolution for speed (5–16s),
   and **Ultra** hands the sculpting to a dedicated shape-generation model,
   Hunyuan3D-2mini (0.6B flow-matching DiT) at a 448 octree resolution, for
@@ -101,7 +104,9 @@ mesh of the same image) lines the two up so the color bake lands correctly
 
 ## Licenses of the parts
 
-Kilnform's own code is yours to license as you wish. The pieces it stands on:
+Kilnform's own code is **MIT-licensed** — see [LICENSE](LICENSE). That covers this
+repository's own source only; the third-party pieces it stands on keep their own
+licenses (weights are downloaded by each user at setup, never redistributed here):
 
 - [three.js](https://threejs.org) — MIT
 - [TripoSR](https://github.com/VAST-AI-Research/TripoSR) (code & weights) — MIT
