@@ -43,6 +43,15 @@ Prompts can be Turkish or English — the UI is English, the understanding is bo
 - Images, prompts, and generated meshes never touch the network. The top bar has a
   live sentinel that flags any request leaving localhost — it should never trigger.
 
+### Trust assumption at setup
+
+`backend/setup.bat` clones the TripoSR and Hunyuan3D-2 source repos and downloads
+model weights, then imports/runs that third-party code and loads the weights on
+your machine. Some weights are pickle-based (`.ckpt`), which can execute code when
+loaded. This is normal for a local ML tool, but it means **setup trusts those
+upstream sources** — a compromised repo or weight file would run with your
+privileges. Only run setup if you trust the upstream projects and your network.
+
 ## System requirements
 
 | | Instant engine | AI engine |

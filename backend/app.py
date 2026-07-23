@@ -29,7 +29,7 @@ if sys.platform == "win32":
         pass
 
 import torch
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, Request, UploadFile, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -53,12 +53,25 @@ def _friendly(exc: Exception) -> HTTPException:
 
 app = FastAPI(title="Kilnform AI")
 
+ALLOWED_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _guard_origin(request: Request):
+    """Reject cross-origin browser requests. CORS only blocks *reading* the
+    reply; a multipart form POST is a "simple" request with no preflight, so a
+    malicious page the user visits could still fire off a heavy GPU job. When an
+    Origin header is present it must be one of ours; non-browser callers (curl,
+    local tools) send no Origin and are left alone — this box is localhost-only."""
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in ALLOWED_ORIGINS:
+        raise HTTPException(403, "cross-origin request refused")
 
 _warm = {"state": "cold"}  # cold | loading | ready | error
 _lock = threading.Lock()
@@ -116,7 +129,8 @@ def warmup():
 
 
 @app.post("/api/text-to-3d")
-def text_to_3d(req: TextRequest):
+def text_to_3d(req: TextRequest, request: Request):
+    _guard_origin(request)
     if not req.prompt.strip():
         raise HTTPException(400, "empty prompt")
     if req.tier not in ("mc", "ultra"):
@@ -138,8 +152,12 @@ def text_to_3d(req: TextRequest):
 
 @app.post("/api/image-to-3d")
 async def image_to_3d(
-    file: UploadFile = File(...), resolution: int = Form(256), tier: str = Form("mc")
+    request: Request,
+    file: UploadFile = File(...),
+    resolution: int = Form(256),
+    tier: str = Form("mc"),
 ):
+    _guard_origin(request)
     if tier not in ("mc", "ultra"):
         raise HTTPException(400, "tier must be 'mc' or 'ultra'")
     data = await file.read()
@@ -149,6 +167,11 @@ async def image_to_3d(
         image = Image.open(io.BytesIO(data))
     except Exception:
         raise HTTPException(400, "not a readable image")
+    # The 30MB cap is on *encoded* bytes; a tiny file can still declare enormous
+    # pixel dimensions and blow up RAM when convert("RGBA") allocates. Reject on
+    # the header-declared size before anything decodes the pixels.
+    if image.width * image.height > 40_000_000:
+        raise HTTPException(413, "image dimensions too large")
     # run in the threadpool so /api/progress stays responsive during the make
     try:
         _ensure_warm()
