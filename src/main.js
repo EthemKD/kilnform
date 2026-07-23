@@ -12,6 +12,13 @@ import * as ai from './aiClient.js';
 
 const $ = (id) => document.getElementById(id);
 
+/* Escape user-derived text before it goes into an innerHTML string. Names come
+   from prompts and (crucially) image filenames — a filename someone else picked
+   must never run as markup, or the "nothing leaves this machine" promise breaks. */
+const escapeHtml = (s) =>
+  String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 const viewer = new Viewer($('viewport'));
 const state = {
   model: null, pristine: null, prompt: '', variation: 0,
@@ -59,7 +66,7 @@ function updateModelInfo() {
   const src = m ? `${m.via} · ${m.label}${m.seconds ? ` · ${m.seconds}s` : ''}` : '';
   el.innerHTML =
     `<b>${viewer.polyCount().toLocaleString('en-US')}</b> triangles · <b>${verts.toLocaleString('en-US')}</b> vertices` +
-    (src ? `<br/>${src}` : '');
+    (src ? `<br/>${escapeHtml(src)}` : '');
 }
 
 /** Every successful make lands in History automatically (capped at 40). */
@@ -241,7 +248,7 @@ async function generateTextAI(prompt, seed) {
       c.classList.toggle('active', Number(c.dataset.seed) === seed));
     const pr = $('parse-result');
     pr.hidden = false;
-    pr.innerHTML = `AI made: <b>${prompt}</b>${res.promptEn && res.promptEn !== prompt ? ` → <i>${res.promptEn}</i>` : ''} · V${seed + 1} · ${res.seconds}s`;
+    pr.innerHTML = `AI made: <b>${escapeHtml(prompt)}</b>${res.promptEn && res.promptEn !== prompt ? ` → <i>${escapeHtml(res.promptEn)}</i>` : ''} · V${seed + 1} · ${res.seconds}s`;
     toast(`AI model ready (${res.seconds}s).`);
     autoSave(`${prompt} · V${seed + 1}`);
   } catch (err) {
@@ -323,7 +330,7 @@ function generateText(variation) {
     c.classList.toggle('active', Number(c.dataset.seed) === variation));
   const pr = $('parse-result');
   pr.hidden = false;
-  let html = `Understood: <b>${p.typeLabel}</b>${p.colorName ? ` · color: <b>${p.colorName}</b>` : ''} · variation <b>V${variation + 1}</b>`;
+  let html = `Understood: <b>${escapeHtml(p.typeLabel)}</b>${p.colorName ? ` · color: <b>${escapeHtml(p.colorName)}</b>` : ''} · variation <b>V${variation + 1}</b>`;
   if (p.typeLabel === 'freeform sculpture' && state.aiReady) {
     html += `<br/>Not in the instant dictionary — switch to the <b>AI engine</b> for a real take on it.`;
   }
@@ -555,9 +562,21 @@ async function refreshLibrary() {
     const el = document.createElement('div');
     el.className = 'lib-item';
     el.title = `${it.name} — click to load`;
-    el.innerHTML = `<img src="${it.thumb}" alt="${it.name}" /><div class="lib-name">${it.name}</div><button class="lib-del" title="Delete">✕</button>`;
+    // Build with DOM nodes, not innerHTML: it.name can be an image filename the
+    // user didn't author, so it must be treated as text, never markup.
+    const img = document.createElement('img');
+    img.src = it.thumb;
+    img.alt = it.name;
+    const nameEl = document.createElement('div');
+    nameEl.className = 'lib-name';
+    nameEl.textContent = it.name;
+    const del = document.createElement('button');
+    del.className = 'lib-del';
+    del.title = 'Delete';
+    del.textContent = '✕';
+    el.append(img, nameEl, del);
     el.addEventListener('click', () => loadFromLibrary(it.id));
-    el.querySelector('.lib-del').addEventListener('click', async (e) => {
+    del.addEventListener('click', async (e) => {
       e.stopPropagation();
       await deleteModel(it.id);
       refreshLibrary();
@@ -619,19 +638,21 @@ function checkNetwork() {
 }
 setInterval(checkNetwork, 3000);
 
-/* ---- test hook (end-to-end verification) ---- */
-window.__kilnform = {
-  viewer,
-  hasModel: () => !!state.model,
-  polyCount: () => viewer.polyCount(),
-  parsed: () => state.model?.userData?.parsed || null,
-  async exportInfo(format) {
-    const { blob } = await exportModel(state.model, format);
-    const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
-    return { size: blob.size, head: [...head] };
-  },
-  async libraryCount() { return (await listModels()).length; },
-};
+/* ---- test hook (end-to-end verification) — dev builds only ---- */
+if (import.meta.env.DEV) {
+  window.__kilnform = {
+    viewer,
+    hasModel: () => !!state.model,
+    polyCount: () => viewer.polyCount(),
+    parsed: () => state.model?.userData?.parsed || null,
+    async exportInfo(format) {
+      const { blob } = await exportModel(state.model, format);
+      const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+      return { size: blob.size, head: [...head] };
+    },
+    async libraryCount() { return (await listModels()).length; },
+  };
+}
 
 refreshLibrary();
 updateStats();
